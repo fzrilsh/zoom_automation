@@ -42,7 +42,7 @@ class Zoom {
         puppeteer.use(StealthPlugin())
         this.browser = await puppeteer.launch({
             headless: "new",
-            args: ['--window-size=1200,800', '--no-sandbox', '--disable-setuid-sandbox'] 
+            args: ['--window-size=1200,800', '--no-sandbox', '--disable-setuid-sandbox', "--disable-gpu", "--disable-dev-shm-usage"] 
         })
 
         this.page = await this.browser.newPage()
