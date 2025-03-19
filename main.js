@@ -52,7 +52,7 @@ class Zoom {
     }
 
     async errorHandler(error){
-        console.error(`Error occured at: ${new Date()}:`, error.toString())
+        console.error(`Error occured:`, error.toString())
 
         await this.mail.remove()
     }
