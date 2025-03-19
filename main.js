@@ -41,6 +41,7 @@ class Zoom {
 
         puppeteer.use(StealthPlugin())
         this.browser = await puppeteer.launch({
+            executablePath: '/usr/bin/google-chrome',
             headless: "new",
             args: ['--window-size=1200,800', '--no-sandbox', '--disable-setuid-sandbox', "--disable-gpu", "--disable-dev-shm-usage"] 
         })
