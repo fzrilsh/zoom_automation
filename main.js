@@ -55,6 +55,7 @@ class Zoom {
         console.error(`Error occured:`, error.toString())
 
         await this.mail.remove()
+        process.exit(1)
     }
 
     async createZoomAccount() {
