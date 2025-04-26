@@ -16,7 +16,11 @@ class Zoom {
     constructor() {
         this.mail = null
         this.zoomPassword = 'SecurePassword123!!'
-        
+
+        this.accountID = ''
+        this.clientID = ''
+        this.clientSecret = ''
+
         this.browser = null
         this.page = null
         this.imap = null
@@ -24,6 +28,7 @@ class Zoom {
 
     async initialize() {
         console.clear()
+        console.time('Starting process at')
 
         console.log('Creating mail account...')
         this.mail = new Email()
@@ -35,15 +40,32 @@ class Zoom {
             host: `mail.${process.env.MAIL_HOST_DOMAIN}`,
             port: 993,
             tls: true,
-            tlsOptions: { rejectUnauthorized: false },
+            tlsOptions: { rejectUnauthorized: false }
         })
         this.imap.connect()
 
+        this.imap.on('error', (e) => {
+            this.errorHandler(e)
+        })
+
         puppeteer.use(StealthPlugin())
         this.browser = await puppeteer.launch({
-            executablePath: '/usr/bin/google-chrome',
-            headless: "new",
-            args: ['--window-size=1200,800', '--no-sandbox', '--disable-setuid-sandbox', "--disable-gpu", "--disable-dev-shm-usage"] 
+            // executablePath: '/usr/bin/google-chrome',
+            headless: false,
+            args: [
+                '--window-size=1200,800',
+                '--no-sandbox',
+                // '--disable-setuid-sandbox',
+                // "--disable-gpu", 
+                // "--disable-dev-shm-usage",
+                // "--disable-extensions",
+                // "--disable-background-networking",
+                // "--disable-software-rasterizer",
+                // "--disable-default-apps",
+                // "--disable-sync",
+                // "--no-first-run",
+                // '--proxy-server=43.135.153.235:13001'
+            ]
         })
 
         this.page = await this.browser.newPage()
@@ -52,17 +74,17 @@ class Zoom {
         return await this.createZoomAccount()
     }
 
-    async errorHandler(error){
+    async errorHandler(error) {
         console.error(`Error occured:`, error.toString())
 
         await this.mail.remove()
-        process.exit(1)
+        // process.exit(1)
     }
 
     async createZoomAccount() {
         try {
             console.log('Go to zoom signup page...')
-            await this.page.goto('https://www.zoom.us/signup')
+            await this.page.goto('https://www.zoom.us/signup', { waitUntil: 'load' })
 
             if (await this.page.$('#OPT-ZTSPZ-370__BirthYear-input')) {
                 await this.page.click('#OPT-ZTSPZ-370__BirthYear-input')
@@ -206,7 +228,7 @@ class Zoom {
             await this.page.click('[for="addr-country"] ~ input')
             await this.page.type('[for="addr-country"] ~ input', 'Indonesia', { delay: 100 })
             await this.page.click('#select-item-select-1-101')
-            
+
             await this.page.click('input[aria-label="street address *"]');
             await this.page.type('input[aria-label="street address *"]', 'Jl. Diponegoro No.123', { delay: 100 })
 
@@ -217,7 +239,7 @@ class Zoom {
         }
     }
 
-    async applyCreditCard(){
+    async applyCreditCard() {
         try {
             console.log('Applying debit card...')
             await delay(2000)
@@ -237,18 +259,30 @@ class Zoom {
             await frame.select('#input-creditCardExpirationMonth', process.env.CREDIT_CARD_EXPIRATION_MONTH)
             await frame.select('#input-creditCardExpirationYear', process.env.CREDIT_CARD_EXPIRATION_YEAR)
 
-            await this.page.click('.opc-payment-credit__action button')
-            await delay(5000)
-            await this.page.click('.opc__submit-action button')
+            // recursive function for check if captcha error
+            let verifyCard = async() => {
+                await this.page.click('.opc-payment-credit__action button')
+                await delay(5000)
 
+                // if(await this.page.$('.zm-alert--error')){
+                //     await delay(10000)
+                //     return await verifyCard()
+                // }
+
+                return true
+            }
+            await verifyCard()
+            
+            await this.page.click('.opc__submit-action button')
             await this.page.waitForNavigation()
+
             await this.changeZoomSetting()
         } catch (error) {
             await this.errorHandler(error)
         }
     }
 
-    async changeZoomSetting(){
+    async changeZoomSetting() {
         try {
             console.log('Change some zoom security settings...')
             await this.page.goto('https://us05web.zoom.us/account/setting/security?ampDeviceId=904c8c21-5215-429e-8657-095d31f7d7c6&ampSessionId=1742370750857')
@@ -256,16 +290,99 @@ class Zoom {
             await this.page.waitForSelector('[aria-label="One-Time Passcode Authentication"]')
             await this.page.click('[aria-label="One-Time Passcode Authentication"]')
 
-            await delay(5000)
+            await delay(1000)
+            await this.buildApp()
+        } catch (error) {
+            await this.errorHandler(error)
+        }
+    }
+
+    async buildApp() {
+        try {
+            console.log('Build app...')
+            await this.page.goto('https://marketplace.zoom.us')
+
+            await this.page.waitForSelector('[role="dialog"] button')
+            await this.page.click('[role="dialog"] button')
+
+            await this.page.goto('https://marketplace.zoom.us')
+            await this.page.waitForSelector('[data-ta="develop"]')
+
+            if(await this.page.$('[role="dialog"] button')){
+                await this.page.click('[role="dialog"] button')
+            }
+            
+            await this.page.hover('[data-ta="develop"]')
+            await this.page.click('[data-ta="build-app"]')
+
+            await this.page.click('[role="dialog"] button')
+            await this.page.waitForSelector('.PrivateSwitchBase-input[value=""]')
+
+            const radios = await this.page.$$('.PrivateSwitchBase-input[value=""]')
+            await radios[1].click()
+
+            await delay(1000)
+            await this.page.click('.MuiStack-root button')
+
+            await this.page.waitForSelector('[name="name"]')
+            await this.page.type('[name="name"]', 'private-api', { delay: 100 })
+
+            await this.page.click('.MuiStack-root button')
+
+            await this.page.waitForSelector('[name="devClientId"]')
+
+            const [accountID, clientID, clientSecret] = await this.page.evaluate(() =>
+                ['devAccountId', 'devClientId', 'devClientSecret'].map(name => document.querySelector(`[name="${name}"]`)?.value || '')
+            );
+
+            this.accountID = accountID
+            this.clientID = clientID
+            this.clientSecret = clientSecret
+
+            await this.page.click('[data-ta="continue-button"]')
+            await this.page.waitForSelector('[name="description"]')
+
+            await this.page.type('[name="description"]', 'my private API', { delay: 100 })
+            await this.page.type('[name="companyName"]', 'hengker-s', { delay: 100 })
+            await this.page.type('[name="contactName"]', 'aku hengker-s', { delay: 100 })
+            await this.page.type('[name="contactEmail"]', this.mail.email, { delay: 100 })
+
+            await this.page.click('[data-ta="continue-button"]')
+            await this.page.waitForSelector('[data-ta="signing-secret"]')
+
+            await this.page.click('[data-ta="continue-button"]')
+            await this.page.waitForSelector('.content-between ._remote-component-container button')
+
+            await this.page.click('.content-between ._remote-component-container button')
+            await this.page.waitForSelector('.MuiButtonBase-root.MuiTab-root.MuiTab-textColorPrimary.css-1pwi56b')
+
+            const scopes = await this.page.$$('.MuiButtonBase-root.MuiTab-root.MuiTab-textColorPrimary.css-1pwi56b')
+
+            await scopes[17].click()
+            await this.page.click('.PrivateSwitchBase-input')
+
+            await scopes[23].click()
+            await this.page.click('.PrivateSwitchBase-input')
+
+            await this.page.click('[role="dialog"] button.MuiButton-primary')
+            await this.page.waitForSelector('[data-ta="continue-button"]')
+            
+            await this.page.click('[data-ta="continue-button"]')
+            await this.page.waitForSelector('[data-ta="activeAppBtn"]')
+
+            await this.page.click('[data-ta="activeAppBtn"]')
+            await this.page.waitForSelector('[data-ta="deactiveAppBtn"]')
+
             await this.finish()
         } catch (error) {
             await this.errorHandler(error)
         }
     }
 
-    async finish(){
+    async finish() {
         console.clear()
-        console.log(`Login: https://www.zoom.us/signin#/login\nEmail: ${this.mail.email}\nPassword: ${this.zoomPassword}\n\n14 Day Zoom Workplace Free Trial.`)
+        // console.timeEnd('Process ended at')
+        console.log(`Login: https://www.zoom.us/signin#/login\nEmail: ${this.mail.email}\nPassword: ${this.zoomPassword}\n\n14 Day Zoom Workplace Free Trial.\n\nAccount ID: ${this.accountID}\nClient ID: ${this.clientID}\nClient Secret: ${this.clientSecret}`)
     }
 }
 
